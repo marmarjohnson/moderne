@@ -1,0 +1,292 @@
+#+TITLE: Development Guidance
+#+AUTHOR: Mark W. Johnson
+#+DATE: <2026-08-19 Wed>
+#+OPTIONS: toc:2 num:t ^:nil
+#+EXCLUDE_TAGS: NOEXPORT
+#+LATEX_CLASS_OPTIONS: [11pt,titlepage]
+#+LATEX_COMPILER: lualatex
+#+LATEX_HEADER: \usepackage{fontspec}
+#+LATEX_HEADER: \directlua{luaotfload.add_fallback("symbolfallback",{"DejaVu Sans:mode=node;","Noto Color Emoji:mode=harf;"})}
+#+LATEX_HEADER: \setmainfont{Latin Modern Roman}[RawFeature={fallback=symbolfallback}]
+#+LATEX_HEADER: \usepackage{xcolor}
+#+LATEX_HEADER: \usepackage{changepage}
+#+LATEX_HEADER: \usepackage{etoolbox}
+#+LATEX_HEADER: \BeforeBeginEnvironment{tabular}{\begin{adjustwidth}{-1.0in}{-1.0in}\centering}
+#+LATEX_HEADER: \AfterEndEnvironment{tabular}{\end{adjustwidth}}
+#+LATEX_HEADER: \hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black, citecolor=blue!60!black}
+#+STARTUP: nofold inlineimages hideblocks
+#+PROPERTY: header-args:gnuplot :session none
+# :session none is required: without it, org-babel shares a single gnuplot process
+# across all org buffers open in the same Emacs session. State set by other files
+# (axis labels, formats, ranges, y2 settings) bleeds into blocks here, producing
+# corrupt output even when the block starts with "reset". :session none forces a
+# clean shell-command-to-string invocation for each block — identical to running
+# gnuplot from the terminal — with no inherited state.
+#+PROPERTY: header-args:python :session none
+# Same reasoning as the gnuplot :session none above -- a shared Python process
+# would leak imports/variables between blocks (and buffers). Pillow (PIL) is
+# already a repo dependency, see pebble_quantize.py's "pip install numpy pillow".
+
+* Development Guidance
+This section keeps only what's still true and actionable for future work
+in this codebase -- read it before starting anything new.
+
+** Platform scope: gabbro only
+
+This face targets the Pebble Round 2 (gabbro) exclusively -- ~PBL_ROUND~, ~PBL_COLOR~ (64-color), 260x260 display. Don't gate new code behind ~PBL_PLATFORM_GABBRO~/~PBL_COLOR~ checks, none of that conditional machinery serves any purpose -- ~package.json~'s ~targetPlatforms~ is just ~["gabbro"]~, so any such branch's ~#else~ would never compile for anything. Heap cap: the waf build cache says ~MAX_APP_MEMORY_SIZE=131072~ (128KB); CLAUDE.md separately states 94KB as the effective runtime figure -- unreconciled, but the app-store resource-pack cap (~MAX_RESOURCES_SIZE_APPSTORE=262144~, 256KB) is the more relevant ceiling to actually watch when adding resources.
+
+** Build & tooling gotchas
+
+- *This project targets SDK 4.33.1* (~pebble sdk activate 4.33.1~). ~pebble sdk~ tracks one *machine-global* active SDK, not a per-project pin -- there's no ~package.json~ field for it (~"sdkVersion": "3"~ there is the manifest *schema* version, unrelated). If a build behaves unexpectedly or ~pebble sdk list~ shows something other than ~4.33.1 (active)~, that's the first thing to check, not an app bug. ~pebble <command> --sdk 4.33.1~ overrides the active SDK for one invocation without switching it machine-wide, useful for a one-off check without disturbing the rest of a session.
+- *TypeScript is a separate build step.* ~pebble build~ does *not* compile ~src/ts/*.ts~/~clay.ts~ -- it bundles whatever is already sitting in ~src/ts-build/index.js~. It will succeed and install without error while silently shipping stale JS. Any edit to ~src/ts/~ or ~clay.ts~ needs ~./build_ts.sh~ run first (compiles in place via ~npm run build:ts~). Check the mtime of ~src/ts-build/index.js~ against the ~.ts~ sources, or just always run ~build_ts.sh~ before ~pebble build~, as a standing habit.
+- *New AppMessage key added to ~package.json~'s ~messageKeys~ can compile as undeclared* (~MESSAGE_KEY_CONFIG_X~ undefined) even though waf's configure step reports success and clearly re-ran -- some intermediate build product isn't invalidated by that change alone. Fix: ~pebble clean && pebble build~.
+- *Emulator flash corruption*: if every ~pebble~ command past ~install~ (screenshot, emu-tap, logs, ping) starts timing out with no app crash log, delete ~~/.local/share/pebble-sdk/<active-SDK-version>/<platform>/~ (currently ~4.33.1~ -- the qemu flash image + pypkjs's own persisted storage) and reinstall. Try this first before assuming an app bug.
+- Raw ~pkill -9~ against qemu/pypkjs is blocked by this environment's sandbox; ~pebble kill --force~ is not -- reach for that first if the emulator seems stuck.
+- *Watchfaces don't get button clicks.* ~window_set_click_config_provider~ compiles and installs fine but is never invoked -- SELECT/DOWN on the idle screen are reserved by the OS (watchface picker / timeline). Any watchface-triggered test/debug gesture must use the accelerometer tap handler instead (single/double/multi-tap, distinguished by count within a timing window), not button clicks.
+- *"Shake" and "tap" are the same event via ~AccelTapService~* (~accel_tap_service_subscribe~) -- there's no API-level way to distinguish a deliberate tap on the case from a wrist shake; both just fire ~AccelTapHandler~ on the same axis-threshold crossing. If a future feature wants a gesture genuinely distinct from this project's existing N-tap system (see the accelerometer bullet above), it needs continuous raw sampling (~accel_data_service_subscribe~) with real jerk/reversal-pattern thresholding, at a real battery cost on this always-on e-paper face, and tuning against real hardware (the emulator's simulated accel likely won't validate a genuine shake motion). Prefer stacking a new "shake"-flavored ask onto an existing tap-count gesture over building that second path, unless the two behaviors genuinely can't share one trigger.
+- *Emulator has no GPS.* ~pypkjs~'s ~navigator.geolocation~ resolves via the sandbox machine's public IP + GeoLite lookup, not the developer's real location. Expected and harmless, but don't debug "wrong weather/location" in the emulator as an app bug without checking this first.
+- *If a future SDK downgrade or different emulator version makes ~health_service_sum_today()~ always return 0* despite ~health_service_metric_accessible()~ correctly reporting ~HealthServiceAccessibilityMaskAvailable~ -- don't chase it as an app bug. Verify HealthService-dependent code by (a) confirming it against ~pebble.h~'s real function signatures/semantics directly and (b) testing the accessible-vs-not branch (toggle on/off, confirm the row appears/hides correctly), treating the actual *summed value* as unverifiable on that SDK version until proven otherwise.
+- *~pebble emu-tap~ CLI latency is real*, ~900-990ms per call from subprocess/connection overhead, not the tap itself. Any timing-sensitive multi-tap gesture window sized against CLI-driven testing must budget for this (this project settled on a 4500ms multitap window for a 5-tap gesture for exactly this reason) -- real hardware taps are far faster and still resolve correctly. Screenshots taken immediately after a tap sequence can also just fail silently (empty ~tail~ output, no error) -- retry once before assuming a real problem.
+- *Rapid successive ~pebble send-app-message~ calls against a long-running emulator session can corrupt/drop AppMessage fields* ("Exception decoding QemuInboundPacket.footer"), indistinguishable at first glance from a real data-handling bug. Verify with temporary ~APP_LOG~s at both the receive point (~comm.c~) and the consuming point before concluding it's an app bug -- this has been a transport artifact, not the app.
+- ~pebble logs~ misses output if read via shell backgrounding (~cmd > file 2>&1 &~) -- use the Bash tool's native ~run_in_background~ instead, or the process log file ends up empty.
+- ~pebble emu-time-format --format 12h|24h --emulator gabbro~ switches the emulator's system-wide clock-format setting (what ~clock_is_24h_style()~ returns) -- the real way to test 12h/24h-dependent code, not achievable by editing app state. ~pebble emu-set-time HH:MM:SS --emulator gabbro~ pins the emulated wall-clock time (real, not swept) for testing a specific hour without waiting or using sweep mode.
+- ~pebble emu-battery --percent N --charging~ sets the charging flag, but there's no complementary "stop charging" flag -- ~--percent N~ alone doesn't clear a previously-set ~--charging~ state. To reach a genuine not-charging state for testing, ~pebble kill --force~ + reinstall (this also resets persisted ~PersistData~ toggles to their coded defaults, which can incidentally be useful for a clean-state check).
+- ~glyph_atlas.py~ requires ~freetype-py~ (~pip3 install --user --break-system-packages~), not otherwise a project dependency.
+- *Testing phone-side TS logic standalone under Node: mocking ~navigator~ needs ~Object.defineProperty~, not a plain assignment.* Recent Node.js ships its own built-in, getter-only global ~navigator~ (Web-API-compatibility surface) -- a plain ~global.navigator = {...}~ silently fails to override it (no error, the real Node navigator just stays in place), producing confusing test results that look like the code under test is wrong when it's actually the mock. Use ~Object.defineProperty(globalThis, 'navigator', {value: {...}, configurable: true})~ instead. To standalone-test a piece of ~clay.ts~/~index.ts~ logic outside the full webpack/rollup pipeline: extract just the relevant top-of-file declarations into their own ~.ts~ file, compile with the ~tsc~ binary already present in this project's own ~node_modules/.bin/tsc~, and run the output under plain ~node~ with mocked globals -- a real, fast way to verify logic (especially anything with multiple branches/fallback order) beyond what a single screenshot would exercise.
+- *Org-babel, specific to this document's own generated figures*: don't use a python source block's ~:results file :file X.png~ header when the block already calls ~img.save("X.png")~ itself -- Org unconditionally overwrites the file with the block's captured return value *after* the code runs, clobbering the real image (with literal text "None" in value-mode, or empty in output-mode). Use ~:results silent~ instead. Also, recent Org wraps python "value"-result blocks in ~def main(): ...~, so a bare trailing expression statement is a no-op inside that function -- don't rely on implicit last-expression capture. Separately: literal non-ASCII/PUA characters embedded directly in a babel source block can be silently dropped by some tool/editor pass with no visible sign (missing glyph looks like nothing, not corruption) -- write them as ~\uXXXX~ Python escapes instead, which are plain ASCII and immune to that failure mode.
+
+** Persisted-data rules
+
+- ~PersistData~ is raw-byte-copied to/from flash via ~persist_write_data~/~persist_read_data~. *Never insert a new field in the middle of the struct -- always append at the end.* Inserting mid-struct shifts every subsequent field's byte offset; an already-persisted (old-layout) blob then reads garbage into the new/shifted fields on the next load, silently -- no crash, no error, just a config value that appears to not take effect. Every field added at the struct's end only extends the blob -- new trailing bytes read back as zero, triggering the normal default-fill path, which is safe.
+- ~AppState~ (as opposed to ~PersistData~) is *not* persisted at all -- ~data_init()~ resets every ~AppState~ field to its default (often ~DATA_EMPTY~) on every launch/reboot. If a value needs to survive relaunch, it has to live in its own persisted snapshot struct under a ~StorageKeys~ entry, not just in ~AppState~.
+- ~DATA_EMPTY~ (a sentinel <= 0) is the shared "no data yet" convention across multiple optional fields (moon altitude, current-weather info-row fields, etc.) -- one comparison covers both "never received" and "genuinely out of range," so new optional/nullable data fields should follow this convention rather than inventing a separate boolean "has data" flag.
+
+** Config-value plumbing: the checklist
+
+Adding a new ~CONFIG_*~ setting touches a fixed set of places that all have to agree; drift between them is a recurring bug class here. Checklist:
+
+1. ~package.json~ -- new ~messageKeys~ entry.
+2. ~config.h~ -- any named constant/enum values the option needs.
+3. ~data.h~ -- new field in ~PersistData~, appended at the *end* of the struct (see Persisted-data rules above).
+4. ~data.c~ -- ~data_init()~'s default value for the field.
+5. ~comm.c~ -- inbox handler parsing the new AppMessage key into the persisted field.
+6. ~clay.ts~ -- the config-page UI control, with a default matching ~data.c~'s.
+7. ~emu_settings_gui.py~ -- a ~CONFIG_SCHEMA~ entry mirroring the same control/default, so it's testable without a real phone.
+8. The render call site(s) that read the field -- boolean toggles in this codebase consistently use a ~value != "false"~ string convention, not a real bool.
+
+After changing ~package.json~'s ~messageKeys~, do a ~pebble clean && pebble build~ (see Build gotchas). Periodically worth a full audit: extract every ~CONFIG_*~ default from ~data.c~, ~clay.ts~, and ~emu_settings_gui.py~ programmatically and diff them.
+
+Note: ~CONFIG_FONT~ is a deliberate exception -- present in ~data.c~/~config.h~/~comm.c~ with no ~clay.ts~/~emu_settings_gui.py~ counterpart. The font-family picker UI was intentionally removed, but ~PersistData.font~, the ~FONT_*~ constants, and the parsing are all kept live -- re-adding a font picker later is just restoring the ~clay.ts~ control, not rebuilding anything.
+
+** Localization
+
+Config-page text (~clay.ts~) and on-watch text are two entirely separate localization problems with different constraints -- see the Glyph-atlas section below for why on-watch is the harder one (fixed pre-baked charset, no non-Latin scripts practical).
+
+Config-page architecture (~CONFIG_LANGUAGE~, EN default): every UI string is a key in a ~Strings~ TypeScript interface, one object per supported language, looked up once via ~t(key)~ at page-load time -- *not* live-retranslated if the Language select changes mid-session (Clay's ~config~ array is built once before the constructor runs; a changed selection takes effect next time the page opens, after Save). Initial language resolves in order: previously-saved ~CONFIG_LANGUAGE~ (read from the same ~clay-settings~ ~localStorage~ cache ~index.ts~'s ~readClaySettings()~ already uses) > ~navigator.language~ prefix-matched to a supported code > English fallback. To add a new supported language: add its code to ~SUPPORTED_LANGS~, add a new object satisfying the full ~Strings~ interface (TypeScript will refuse to compile with even one key missing -- a real safety net at this scale) and its native name to ~LANG_NATIVE_NAMES~.
+
+On-watch architecture (~data_localized.c~/~.h~): the same persisted ~CONFIG_LANGUAGE~ value selects a ~LocalizedStrings~ struct (day/month-name tables indexed directly by ~tm_wday~/~tm_mon~, plus any hardcoded placeholder strings) out of a small array, English first and doubling as the fallback. Exists only because Pebble's on-watch ~strftime()~ has zero locale support -- ~%a~/~%b~ are always English regardless of ~CONFIG_LANGUAGE~. Any accented character these tables need has to be added to ~glyph_atlas.py~'s ~DATE_CHARSET~ and the atlas regenerated -- see the Glyph-atlas section right below for the exact (non-obvious) byte-escape convention this requires, which is easy to get wrong by analogy with the existing degree-sign code.
+
+** Glyph-atlas bitmap-font system
+
+Each atlas (~glyph_atlas.py~) is a pre-baked charset rasterized at one fixed point size for one text "slot" (~GLYPH_ATLAS_SET_TIME~/~DATE~/~WEATHER~/ring-annotations, etc.), producing a PNG + a generated metrics header, drawn via ~glyph_atlas_draw_string()~ and retinted at draw time via ~gbitmap_set_palette()~ (~glyph_atlas_draw_string_tinted()~ / ~util_draw_tinted_icon()~ -- reuse this one mechanism for any new "recolor this text/icon by a runtime color" need, don't build a second path).
+
+*~util_draw_tinted_icon()~'s source bitmap must be a 4-entry ~mode="P"~ paletted PNG* (indices 0/2/3, index 1 conventionally unused -- ~weather_icons_gen.py~'s ~snap_alpha_to_palette_index()~/~save_paletted()~ is the reference implementation, and ~steps_sleep_icon_gen.py~ now reuses it verbatim), *not* a plain continuous-alpha RGBA PNG like ~wind_icon.png~/~humidity_icon.png~ -- ~gbitmap_set_palette()~ recolors palette *indices*, so a continuous-alpha source has nothing for it to act on and won't visibly retint at all. A plain white/black RGBA icon (this project's other, simpler UI-row-icon style, switched only by ~s_bg_is_light~) needs regenerating in this paletted format first if it's ever going to need runtime tinting/intensity-dimming later.
+
+*The core limitation*: a character not present in an atlas's charset is *silently dropped* by ~find_entry()~ -- no error, no fallback glyph, just a shorter/garbled-looking rendered string.
+
+*Rule for adding a new character to an atlas*: extend that atlas's actual charset constant (e.g. ~DATE_CHARSET~/~WEATHER_CHARSET~), confirm the source font genuinely has a glyph for it (~face.get_char_index(char)~ non-zero, not a tofu fallback), regenerate via ~python3 glyph_atlas.py~, and confirm the diff only touches the atlas/atlases that should have changed. The project's converged practice is to make a shared charset broad up front (full basic-Latin alphabet + every punctuation character either consuming screen might ever print) rather than hand-enumerating exactly what's needed today -- the compiled-size cost is a few KB, negligible against the heap budget.
+
+Other atlas-system specifics worth knowing:
+- *Baseline math for positioning two different atlases/point sizes next to each other* (e.g. a small suffix marker beside a large primary string): ~draw_string_on_atlas()~ (~glyph_atlas.c~) computes a string's baseline as ~bounds.origin.y + <atlas>_Y_OFFSET + max_bearing_y(str)~, where both ~Y_OFFSET~ (per-atlas, ~GLYPH_ATLAS_<NAME>_Y_OFFSET~) and each glyph's ~bearing_y~ come straight from the generated ~glyph_atlas_<name>_metrics.h~ -- real numbers, not proportional guesses ("half the point size" is not a substitute; off by ~10px at 54px-vs-27px in practice). To baseline-align a smaller string's bounds against a larger one: solve ~small_top + small_Y_OFFSET + small_max_bearing_y = large_top + large_Y_OFFSET + large_max_bearing_y~ for ~small_top~, using the real per-glyph ~bearing_y~ values for whichever specific characters are involved (lowercase letters with no ascender, e.g. "am"/"pm", have a much smaller ~bearing_y~ than digits or capitals -- don't reuse a digit's ~bearing_y~ for a lowercase-only string).
+- *Non-ASCII characters in a string drawn through the atlas (not through ~graphics_draw_text()~) must be written as a single ~\xHH~ byte equal to the character's raw code point, NOT its UTF-8 encoding.* ~GlyphAtlasEntry.c~ (~glyph_atlas.py~'s ~c_char_literal()~) stores plain ~ord(ch)~ truncated to one byte, and ~find_entry()~ (~glyph_atlas.c~) does a raw single-byte scan against that -- there is no real UTF-8 decoding anywhere in this path. The existing degree-sign code (~"\xc2\xb0"~) *looks* like it's emitting real UTF-8 and happens to work, but only by coincidence: UTF-8's second byte equals the raw code point only for the narrow U+0080-U+00BF sub-range (true for '°', U+00B0), not for U+00C0-U+00FF (true for essentially every accented Latin letter, e.g. á/é/í/û/ä). Get the exact byte from the generated metrics header itself (~grep~ for the character's entry in ~glyph_atlas_<name>_metrics.h~ after regenerating) rather than computing it by hand. Separately, C's ~\xHH~ escape greedily consumes every following hex-digit character (0-9a-fA-F) -- ~"\xe1b"~ is one malformed escape, not byte 0xE1 followed by 'b' -- split into adjacent string literals (~"\xe1" "b"~) whenever the next character in the string happens to be a hex digit. (A single raw non-UTF-8-aware byte would still be a problem for any code path that instead renders the same string via ~graphics_draw_text()~'s native decoder, which does expect real UTF-8 and drops the whole string on an invalid byte -- but nothing in this codebase currently shares a string constant between the atlas path and that one.)
+- ~glyph_atlas_draw_string()~ only supports center alignment unless a real ~GTextAlignment~ parameter is passed -- added explicitly to support left-aligned callers; don't assume other alignments work without checking.
+- ~glyph_atlas_draw_string()~ has no overflow/ellipsis handling built in (unlike ~graphics_draw_text()~'s ~GTextOverflowModeTrailingEllipsis~) -- use ~glyph_atlas_truncate_to_width()~ (shrinks from full string to 1 char + "...", re-measuring via the atlas's own width function each step) for any bitmap-atlas string that might overflow.
+- Small/thin strokes anti-alias into visibly gray, undersaturated pixels even when geometrically straight (thickness relative to the pixel grid matters, not straightness) -- this shows up below roughly 20px for this project's font. Fix is dilation on the pre-quantized coverage; isotropic dilation over-thickens unrelated strokes, so ~glyph_atlas.py~'s ~dilate=~ parameter accepts either a plain int (isotropic) or a ~(dy, dx)~ tuple (anisotropic, targeting only the axis with the actual gap) -- check which axis the specific complaint is on before reaching for an isotropic bump. A fractional dilation radius does not exist as a real lever for a specific fix -- it's a threshold a fix crosses, not a gradient it approaches (a circular dilation footprint of radius <3.0 excludes a point exactly 3 rows away regardless of how close to 3.0 the radius gets). Not specific to ~glyph_atlas.py~'s own text fonts -- ~steps_sleep_icon_gen.py~'s MDI icon glyphs can hit the exact same "thin outline stroke reads as faded gray, not solid" issue, needing the identical fix: dilate the *supersampled* coverage before the LANCZOS downsample and before the palette-index snap, not after. Diagnose by printing the raw coverage array before guessing -- confirms whether it's a genuine sub-threshold band (fixable by dilation) versus something else, and try 2-3 dilation values rendered side by side before picking one; one step too far visibly merges nearby detail (a clock's hands into its face, a toe into a heel) that isn't obvious from the coverage numbers alone.
+
+** Rendering/geometry constants and constraints
+
+- The background color is day/night-aware: ~data_get_bg_color(t)~/~data_bg_is_light(t)~/~data_get_temp_color_abs(temp_c, t)~ all take a ~struct tm *t~ and pick between ~PersistData~'s ~color_bg_day~/~color_bg_night~ via ~sun_arc_is_daytime(t)~ (the same shared day/night check ~moon_draw()~'s daytime-faint dimming already used -- don't re-derive a second sunrise/sunset comparison for a new caller, reuse this one). Always pass the *real* ~t~ for the current draw frame (respecting sweep-test/~#define TEST~ overrides), never a freshly-computed ~time(NULL)~/~localtime()~ inside a per-frame draw function -- the latter would silently ignore sweep mode. The two exceptions that *do* compute a fresh wall-clock ~t~ locally (~main_window_push()~/~main_window_reload()~) are event handlers outside the per-frame draw path, not draw functions themselves; the file-static ~s_bg_is_light~ cache they set gets correctly overwritten from the real frame ~t~ on the very next actual draw regardless (~canvas_update_proc()~ refreshes it every redraw, since the background can change on its own every time day crosses into night).
+- Panel: 260x260 round, geometric center ~(130,130)~, ~PANEL_R=130~. Any icon/shape centered at radius R from center must keep its actual *ink* bounding box (not its nominal canvas) inside the 130px circle at every angle it can appear at -- measure this from the real font/asset, don't assume the nominal canvas size is the ink extent (weather-icons glyphs overflow their nominal square by up to 54%; fixed per-glyph by auto-scaling each glyph only as far as its own overflow requires, not a single global shrink sized to the worst offender).
+- The worst-case clearance angle for a square icon on a circular sweep is 45 degrees, not the apex or a horizon point -- compute max safe radius there (~R = 130 - icon_half_diagonal~ at 45deg), not at the sweep's endpoints.
+- The shared horizontal landmark ("~horizon_y~") is the digital-time separator/battery-fill bar (~sep_y~ ~485-495 in ~scl_y_pp~ coordinates) -- pivot any transition-icon alignment on this, not the display's raw geometric center (measured ~1px off, and produces a visible seam if used directly).
+- Settled sun-arc constants: 24px icon, ~SUN_ARC_RADIUS=112~ (a single constant radius for the entire 180deg path, including the four fixed transition positions -- a two-radius design, small apex-safe radius for the continuous sweep vs. a larger edge-hugging radius for the fixed positions, was considered and rejected: it eliminates one geometry problem but introduces a visible jarring jump in icon distance at every phase change, which reads as worse). One constant radius does *not* fully avoid the sweep overlapping the time text during roughly the last 40-50deg of approach to each sunrise/sunset -- this is an accepted, documented tradeoff, not an unsolved bug.
+- ~TRANSITION_ICON_Y_OFFSET~ (7px): the three static horizon/sunrise/sunset icons' true ink line sits at row ~18-20 of their 24px canvas, not the canvas's row-12 center -- this offset applies only to those three; the continuously swept condition icons are correctly canvas-centered with no offset.
+- Hourly ring (weather-detail screen): ~HOURLY_RING_RADIUS=108~ (icons, outer by default), ~HOURLY_RING_TEXT_RADIUS=78~ (temp/precip labels, inner by default) -- ~CONFIG_RING_LAYOUT~ can swap which ring hosts which (~ICONS_OUT~/~TEXT_OUT~) or drop one ring entirely (~ICONS_ONLY~/~TEXT_ONLY~, the survivor always renders at the outer 108 radius, never expands to fill the freed space). Ring digit-annotation atlas: 14px, anisotropic ~dilate=(3,2)~.
+- Moon region: ~MOON_REGION_CENTER_Y=46~, ~MOON_REGION_RADIUS=10~ -- a small polar sky-map (azimuth = angle around the region, altitude = distance from its center, zenith at the middle) reusing ~util_make_hand_point()~, the same helper the sun-arc and analog-hour-triangle use.
+- Info-row center block (weather-detail screen): up to 6 optional rows (current temp, feels-like, precip-now, wind, gusts, UV, AQI, humidity -- 8 candidates total incl. the original wind/humidity), each 20px + 6px gap. Fixed priority order decides which render when more are checked than fit; cap is 4 rows normally, 6 rows when ~CONFIG_RING_LAYOUT~ is ~ICONS_ONLY~/~TEXT_ONLY~ (the inner ring radius is otherwise unused space at those two layouts) -- checked geometrically (chord math against the ring's fixed exclude-rect boxes), not guessed. A checkbox and, for fields that can legitimately be absent, data availability both gate whether a row can ever appear -- priority rank alone doesn't override an unchecked box. Default content is just wind + humidity (this block's original, pre-feature content); the other 6 candidates are opt-in.
+- ~rects_overlap()~-style exclude-rect checks (used by the hourly ring's text-vs-fixed-block collision guard) should stay in place as a real runtime guarantee even after the geometry is proven to fit by measurement -- it's what protects a future taller block from silently reaching into fixed content again.
+- Rotated bitmaps: ~graphics_draw_rotated_bitmap()~ needs an exclude-rect/margin allowance for corner-sweep only if the icon's shape is non-circular -- a circular icon rotated about its own center never changes its bounding box, so no extra margin is needed for it.
+- Text truncation/ellipsis on a round display must be measured against the actual chord width available at that row's y-offset (~half_width = sqrt(r^2 - dy^2)~), not the full rectangular bounds width (~bounds.size.w~ is only the true available width at the exact vertical center) -- a naive width check overflows past the physical bezel on rows away from center.
+- 2-bit-per-channel color math (GColor8, 0-3 per channel) has very few discrete levels -- any new blend/shade formula must be hand-verified across every intended input to confirm the outputs stay distinct and non-degenerate. Round-to-nearest blending can silently collapse two intended-different fractions to the same output; truncating/floor blending can floor a low-but-nonzero fraction all the way to the literal background color (invisible, worse than a collision). The project's converged pattern for "shade a color toward the background depending on background lightness" is a single fixed ~50%~ round-to-nearest blend toward black/white, applied only to colors whose own luminance is high enough to need it -- not a second hand-picked parallel palette. When picking a replacement color instead of shading (e.g. for a light-background counterpart to a dark-background ramp), preserve the same hue as the original rather than substituting an unrelated named color -- a hue shift toward a neighboring bucket's color reads as "the wrong bucket," not just "a different shade."
+- ~gbitmap_set_palette()~ retains the *pointer* it's given (per its own doc comment -- freed "when another palette is set"), it does not copy the 4 colors. Any palette array passed to it must remain live for as long as anything might read the bitmap -- building it as a local/stack array inside a helper that returns before the bitmap is actually drawn produces a dangling pointer and visibly scrambled output. Use static/persistent storage if palette construction is split out of the immediate draw call.
+- Compiled bitmap-resource palette index order is *not* guaranteed to be "0=transparent, 1/2/3=ascending alpha" -- that pattern holds for some existing resources by coincidence of how the resource compiler happens to order a Python ~set()~, not by contract. Read back ~gbitmap_get_palette()~ once after compiling to discover a new bitmap's real index-to-alpha mapping rather than assuming the old order.
+- Placeholder palette entries used only as PNG-generation scaffolding must be genuinely distinct RGB per alpha level (not all flat white) -- Pebble's resource compiler appears to treat visually-identical-but-differently-indexed entries as noise to smooth/dither away at edges, which corrupts the on-watch bitmap's actual index data at antialiased boundaries even though the source PNG's indices are untouched. Symptom: an on-device raw index histogram doesn't match the source PNG's index histogram, concentrated at edges.
+- *Native (TTF) font rendering of an icon font is unproven and unsafe for this project's weather-icons font*: Pebble's on-device font rasterizer can silently fail to parse certain multi-stroke glyph outlines and substitute a broken/notdef fragment, with no build-time warning. The bitmap/atlas + palette-tint pipeline is the trusted rendering path for icons in this project; treat any future native-TTF icon rendering as needing a per-glyph on-device check before trusting it.
+- ~GPath~ (~gpath_create~/~gpath_rotate_to~/~gpath_move_to~/~gpath_draw_filled~) is the right tool for an arbitrary filled rotating polygon (e.g. an analog-hour indicator triangle) -- neither manual sin/cos point math (~util_make_hand_point()~) nor ~graphics_draw_rotated_bitmap()~ covers a filled arbitrary shape.
+- CLAUDE.md's "ship one hand bitmap, not pre-rendered rotations" guidance applies to any single-needle indicator generally, not just clock hands -- e.g. the wind-direction compass icon is one bitmap drawn via ~graphics_draw_rotated_bitmap()~.
+- A continuous position readout (e.g. an analog-hour-hand-style indicator) should use a continuous fraction of the relevant cycle, not snap to one of N discrete bins, when accuracy is the point -- e.g. ~(hour%12*60+min)/(12*60)~ rather than a fixed 12-position lookup.
+- When simulated/test data needs to demonstrate an effect across an entire screen (e.g. sweep-test mode exercising a full temperature range), evaluate the same formula per-element at that element's own position/hour rather than driving every element off one shared instant -- otherwise elements that are supposed to differ (12 ring positions, each a different hour) all move in lockstep instead of showing a believable spread.
+- FULL_DIAL, the old 24-hour weather/temp ring, and analog clock mode have all been retired from this codebase -- don't assume any surviving reference to them elsewhere in this project's docs describes live code.
+
+** Weather data source and pipeline
+
+- Provider: Open-Meteo (~api.open-meteo.com/v1/forecast~), no auth, one HTTPS GET returning ~current~/~hourly~/~daily~ in a single response. WMO 4680 numeric weather codes, with a vetted icon mapping already implemented in ~data_get_weather_icon()~ (~src/c/modules/data.c~).
+- Refresh cadence: hourly (~MIN_WEATHER_INTERVAL_S~), matching Open-Meteo's own model update cadence -- don't tighten this without a reason.
+- Weather-condition staleness: fall back to the clear-sky icon if the last successful fetch is older than ~WEATHER_STALE_S~ (3-4h), checked against a *persisted* fetch timestamp, not just an in-RAM one (a RAM-only timestamp resets to 0 on every relaunch and would otherwise read as infinitely stale immediately after a persisted snapshot loads).
+- Sunrise/sunset get *no* staleness timeout -- keep showing the last persisted value indefinitely (drifts only ~1-2 min/day, low risk of being actively wrong), deliberately different from weather-condition staleness (which can be actively, visibly wrong, e.g. showing rain after it's stopped).
+- Time-jump / travel detection: compare wall-clock ~now~ against the last tick time each minute; a gap that isn't ~~60s (allowing jitter slack) triggers an immediate opportunistic weather refresh rather than waiting for the next ~tm_min==0~ boundary -- catches both DST transitions and real timezone travel with one check, no need to distinguish the two cases.
+- Fractional values sent over AppMessage must be fixed-point scaled integers (e.g. precipitation mm*10), never rounded to a whole unit -- AppMessage is integer-only, and rounding a common small value (e.g. 0.3mm) to the nearest integer flattens it to 0.
+- AppMessage inbox/outbox buffer sizes (~comm_init()~) have grown repeatedly as fields were added (256->384->512 bytes) -- size any future bump with real headroom margin, not the exact new minimum, so the next small field doesn't force revisiting it again.
+- Wind direction from Open-Meteo (~wind_direction_10m~) is the meteorological "blowing FROM" convention (0=N, matches a weather vane's physical pointing). If the intent is "which way the wind is blowing TO" (the more intuitive layperson reading), add a flat +180 degrees at render-time rotation only -- keep the stored/sent value in the raw meteorological convention, in case another consumer wants it.
+- Air quality requires a second, separate Open-Meteo host (~air-quality-api.open-meteo.com~) -- wrap this fetch in its own try/catch with its own failure sentinel so an AQI-endpoint outage can't take down the primary weather send.
+- Internal temperature storage is Celsius; any future degF-specified bucket/threshold logic should convert the stored Celsius value to degF once (~round(c * 9/5 + 32)~) and compare against exact integer degF cutoffs, rather than reverse-deriving degC cutoffs (risks up-to-1-degree rounding drift right at a boundary).
+- US-unit defaults throughout: temp F, wind MPH, precipitation inches -- keep any new unit-bearing field consistent with this rather than defaulting to metric.
+
+** Lunar/astronomy specifics
+
+- Moon phase, position (azimuth/altitude), and moonrise/moonset are deterministic celestial mechanics -- computed (phone-side JS, ported from the well-known SunCalc.js formulas, BSD-2-Clause, (c) Vladimir Agafonkin -- retain the copyright notice per the license, already done in ~moon.ts~'s header), not fetched, for pipeline consistency with how sunrise/sunset already reach the watch. Open-Meteo also exposes ~daily=moon_phase,moonrise,moonset~ at near-zero extra integration cost if this is ever revisited.
+- Icon set: weather-icons' ~wi-moon-alt-*~ (28 glyphs, always has a full circular boundary at every phase -- the primary ~wi-moon-*~ set does not). *Must be reverse-indexed* (~(i + 14) % 28~) from the font's own glyph order: in the alt set, drawn pixels mean *shadowed*, so the font's own "new moon" glyph is the hollow/unshadowed one and its "full moon" glyph is the solid one -- backwards from the intuitive mapping. This is intentional and documented in code; don't "fix" it back to the font's natural order later.
+- Blue moon definition used: the popular/calendar definition (2nd full moon in a calendar month), not the traditional seasonal definition -- recomputed fresh from the date each time, no cross-day state tracked.
+- *On-watch trig for astronomy must never call libm's own sin/cos/tan/asin/acos/atan2* (anything that routes through ~__kernel_rem_pio2~). Gabbro's Cortex-M3 has no hardware float (software-emulated), and this SDK's libm trig range-reduction is unreliable on angle magnitudes that arise naturally in astronomical formulas (raw angles that grow with days-since-epoch are already in the hundreds of thousands of degrees before reduction, ~9700+ days since J2000 as of 2026). Reducing every angle mod 360 before use, reducing composite/summed angles too, and clamping asin/acos inputs to [-1,1] are all real, necessary defensive fixes, but none of them alone stops the crash -- every trig primitive (sin/cos/atan2/asin/acos/sqrt) is instead built on top of Pebble's own ~sin_lookup()~/~cos_lookup()~ table lookups plus hand-rolled polynomial/Newton-Raphson approximations, with zero calls into libm's trig anywhere in the module. Accuracy cost is a few hundredths of a degree, irrelevant at icon scale. Any future on-watch astronomical math must follow this same pattern from the start.
+- The eclipse-tint feature (rendering is already fully wired -- any ~GColor~ works with the existing tint call) is still gated on a not-yet-built small hardcoded almanac table of predicted eclipse dates/windows.
+
+** Calendar / next-appointment feature
+
+- There is no Pebble Timeline-read API for another app/service's events (only ~APP_LAUNCH_TIMELINE_ACTION~, fired for taps on this app's *own* pin), and Timeline Quick View was never enabled on round watches -- any "show an external calendar event" feature needs its own independent phone-side fetch, architecturally identical to weather (~index.ts~ -> AppMessage -> ~comm.c~).
+- Data source: a private ICS subscription URL -- a standard mechanism (not provider-specific) supported identically by Google, Outlook/Office 365, iCloud, Fastmail, Proton, Zoho, and self-hosted CalDAV, so one URL/one code path covers all of them (including a Google calendar that already merges in another provider's events).
+- *Secret-handling rule (standing)*: never log the ICS URL or fetched event content; store the URL in exactly two places (watch ~PersistData~, phone localStorage via Clay's existing settings cache) -- no third copy anywhere.
+- Verify any ICS/recurrence-parsing library (this project uses ~ical.js~) against synthetic test data in a standalone script *before* wiring it into ~index.ts~ -- specifically recurrence expansion and ~VTIMEZONE~/~TZID~ resolution against a process running in an unrelated system timezone, since a subtly-wrong recurrence/timezone result fails silently (shows the wrong appointment) rather than crashing.
+- Reminder-window design pattern: the phone sends up to N (2) upcoming-today candidates soonest-first (not "the" one next appointment), and the watch re-picks which one (if any) currently qualifies on every per-minute render (~now < candidate_start + REMINDER_MIN~ (15)). This exists because the phone's own refresh cadence (hourly, same as weather) is too coarse to catch a reminder window's boundary expiring mid-hour -- pushing the "which one is current" decision to the watch's own per-minute tick avoids a stale appointment lingering.
+- Any fixed-width numeric string parsing on-watch (e.g. "HH:MM") must be hand-parsed via character arithmetic, *never* via ~sscanf~/any scanf-family function -- linking in newlib's scanf machinery drags in a ~setlocale~ symbol that collides with libpebble.a's own, causing a link failure (~multiple definition of 'setlocale'~).
+- Any time value displayed without an AM/PM marker (this project's convention throughout) needs a lookahead cap to stay unambiguous -- 12h in 12-hour display mode, 24h in 24-hour mode -- gated off the *same* ~clock_is_24h_style()~ check the display formatter itself uses, not a second independent check, so the cap and the format can never disagree with each other.
+
+** Testing/verification discipline (standing rule)
+
+*Verify pixel-level/color/geometry claims by measuring actual on-device pixels, not by reasoning about the code or trusting a screenshot.* This project has repeatedly found real bugs invisible to code review that only surfaced via a raw QEMU-monitor ~screendump~ (bypassing ~pebble screenshot~'s own color-correction/round-mask postprocessing, which has itself been shown to introduce artifacts -- smoothing RGB values that aren't multiples of 0x55, the real panel's actual granularity) or an on-device ~APP_LOG~ histogram of raw bitmap/index data compared byte-for-byte against the source resource. A "fix" that looks correct in source has more than once still been wrong (or wrong in a new way) until re-measured -- treat a source-level fix as provisional until confirmed against a real render.
+
+Practical patterns that have worked well and are worth reusing:
+- Isolate root causes with a targeted one-shot diagnostic (a temporary ~APP_LOG~ call, or a standalone test harness exercising one primitive at a time) rather than iterating guesses inside the full pipeline.
+- *When comparing two screenshots for "did this visually change," compare pixel-color frequency, not just which colors are present.* Anti-aliasing/edge pixels mean a handful of stray pixels of nearly any color can show up in a region regardless of the setting under test -- use a ~collections.Counter~ over the region to find the *dominant* color rather than a bare ~set()~ of colors present.
+- Cross-check any ported/reimplemented formula (e.g. JS->C astronomy math) against an independent second implementation or external data source before trusting it, not just "it compiles and doesn't crash."
+- The ~#define TEST~ block in ~config.h~ pins clock/sunrise/sunset/weather-code/moon values for deterministic emulator testing without waiting for real dawn/dusk/moon phase -- extend this pinning pattern for any new time- or astronomy-dependent field.
+- Sweep-test mode (3/4/5-tap gestures, since watchfaces can't use button clicks) fast-forwards simulated time/weather/temperature/moon phase for visually exercising an entire cycle in seconds. It reads its own separate, faked current-condition state (~app_state->current_code~/~current_temp~/~current_apparent_temp~) -- any screen or element that reads different underlying data (e.g. the hourly-forecast arrays the weather-detail ring uses, distinct from the main dial's current-condition struct) needs its *own* wiring into the sweep formula, or it will silently sit static during a sweep with no error. When a report says "sweep doesn't seem to affect screen X," check first whether X reads a data path that was ever actually wired to the sweep/test-mode logic before assuming a regression.
+- Before recommending or extending a not-recently-touched feature, verify the identifiers/behavior it depends on still exist as described -- code drifts.
+- *Placing a new element relative to others by box-geometry formula alone (glyph metrics, ~scl_y_pp~ values) is not the same as verifying the real visual gap.* A glyph/icon's own internal padding relative to its nominal box is invisible to that math. Fix pattern: take a screenshot, scan each pixel row in Python/PIL for non-background content (~diff = abs(row - bg_color); has_content = diff > threshold~) to find exactly where each line's *real* ink starts and stops, then compute the gap from those measured rows -- not from box math -- before and after any placement change.
+
+* Do Not Export :NOEXPORT:
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+This section won't be exported
+* COMMENT Emacs Local Variables :NOEXPORT:
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+What each file-local variable below does, and why it is there.
+
+** ~truncate-lines: t~
+
+Don't soft-wrap long lines at the window edge — let them run off to the
+right.  With wrapping on, the inline images embedded between paragraphs
+re-flow on every window resize and make the source unpleasant to edit;
+truncation keeps the structural layout stable.
+
+** ~org-confirm-babel-evaluate: nil~
+
+Run ~C-c C-c~ on a source block without the "Evaluate this code block?"
+prompt.  This file is full of trusted babel blocks (gnuplot, plantuml,
+ditaa, mermaid, dot, shell-out-to-tikz, etc.) that are re-run frequently
+during authoring; the confirmation prompt becomes pure friction.
+
+** ~(auto-revert-mode 1)~
+
+Re-read the buffer from disk whenever the underlying file changes.  Useful
+when an external tool (or a CI / formatting hook) rewrites the file behind
+Emacs's back so the changes show up immediately.
+
+** ~(add-hook 'org-babel-after-execute-hook 'org-redisplay-inline-images nil t)~
+
+After a babel block finishes, refresh the inline image overlays in this
+buffer.  Several blocks here generate images on disk (wavedrom SVG → PDF,
+gnuplot PNG, plantuml PNG, ditaa PNG, mermaid PNG, dot PNG, TikZ →
+ImageMagick PNG).  Without this hook the image file is rewritten but the
+overlay still shows the stale version until you run
+~org-redisplay-inline-images~ by hand.  The trailing ~nil t~ makes the
+hook buffer-local.
+
+** ~(font-lock-add-keywords nil '(("️" (0 '(face nil display "")))) t)~
+
+Many Unicode symbols exist in two presentations: a text version (single-width,
+monospace-compatible) and an emoji version triggered by appending U+FE0F
+(variation selector-16).  Emacs counts both forms as width 1, but the emoji
+glyph renders visually wider, throwing off org-mode table alignment.
+
+Rather than mapping individual characters, this font-lock rule makes U+FE0F
+itself invisible (~display ""~) everywhere it appears.  The base character
+remains and renders in its text presentation, fixing alignment for the entire
+class: ⚠️ ℹ️ ✔️ ✖️ ☑️ ✉️ ✏️ ✂️ ☎️ ❄️ ♻️ ⚙️ ➡️ ↩️ and any others.  The
+underlying file is unchanged.
+
+** The ~post-command-hook~ block (~org-table~ at 85%)
+
+Keep ~org-table~ cells at 85% of the body-text size, and have that ratio
+track ~text-scale-increase~ / ~text-scale-decrease~.
+
+Why simpler approaches don't work in this setup:
+
+- A relative remap such as ~(face-remap-add-relative 'org-table :height 0.85)~
+  doesn't track text-scale, because with ~variable-pitch-mode~ active the
+  ~default~ face is remapped to a variable-pitch font (Inter), but
+  ~org-table~ inherits from ~fixed-pitch~ (JetBrains Mono).  Scale changes
+  applied to ~default~ never propagate down the ~fixed-pitch~ chain.
+- An absolute remap (e.g. ~:height 92~) pins the table at a fixed point
+  size, so it stays put when the body text scales.
+- Advising ~text-scale-set~ doesn't fire: ~text-scale-increase~ is a C
+  subroutine that calls ~text-scale-set~ at the C level, bypassing any
+  Elisp advice attached to the symbol.
+
+What the hook does:
+
+1. On each ~post-command-hook~ tick it reads the current text-scale factor
+   straight out of ~face-remapping-alist~ (the ~:height~ value Emacs stores
+   on the ~default~ entry).
+2. If that factor changed since the last command, it recomputes
+   ~target = round(0.85 × default-base-height × scale)~ in tenths of a
+   point and re-applies the remap to ~org-table~.
+3. A one-element state cell (~(list 1.0)~) caches the previous factor so
+   the alist is only rewritten when the scale actually changes — keystrokes
+   that don't touch text-scale are essentially free.
+
+Buffer-local hooks are released automatically when the buffer is killed,
+so no explicit ~kill-buffer-hook~ cleanup is required.
+
+** ~(org-table-map-tables #'org-table-align)~
+
+Walk every table in the buffer at open time and call ~org-table-align~ on
+it.  Tables saved with non-default column widths or stale alignment can
+look ragged until they're re-aligned; doing it once on visit gives a
+clean view.
+
+** ~(add-to-list 'revert-without-query ".*\\.png")~
+
+When a PNG buffer is reverted (because a babel block regenerated the
+file), don't prompt — just reload it.  PNGs in this file are derived
+artifacts, never hand-edited, so there's never anything to lose.
+
+** ~(setq-local org-export-exclude-tags '("NOEXPORT"))~
+
+Tell the exporter to skip any heading tagged ~:NOEXPORT:~ (including this
+section itself).  Without this, the prose explaining the local variables
+would leak into the exported HTML / PDF.
+
+# Local Variables:
+# truncate-lines: t
+# org-confirm-babel-evaluate: nil
+# eval: (auto-revert-mode 1)
+# eval: (add-hook 'org-babel-after-execute-hook 'org-redisplay-inline-images nil t)
+# eval: (font-lock-add-keywords nil '(("️" (0 '(face nil display "")))) t)
+# eval: (let* ((state (list 1.0)) (fn (lambda () (let* ((spec (cadr (assq 'default face-remapping-alist))) (cur (or (and (listp spec) (plist-get spec :height)) 1.0))) (unless (equal cur (car state)) (setcar state cur) (setq face-remapping-alist (assq-delete-all 'org-table face-remapping-alist)) (face-remap-add-relative 'org-table :height (round (* 0.85 (face-attribute 'default :height) (if (floatp cur) cur 1.0))))))))) (funcall fn) (add-hook 'post-command-hook fn nil t))
+# eval: (org-table-map-tables #'org-table-align)
+# eval: (add-to-list 'revert-without-query ".*\\.png")
+# End:

@@ -1,0 +1,308 @@
+#+TITLE: Moderne
+#+AUTHOR: Mark W. Johnson
+#+DATE: 2026-08-30
+#+OPTIONS: toc:2 num:t ^:nil
+#+EXCLUDE_TAGS: NOEXPORT
+#+LATEX_CLASS_OPTIONS: [11pt,titlepage]
+#+LATEX_COMPILER: lualatex
+#+LATEX_HEADER: \usepackage{fontspec}
+#+LATEX_HEADER: \directlua{luaotfload.add_fallback("symbolfallback",{"DejaVu Sans:mode=node;","Noto Color Emoji:mode=harf;"})}
+#+LATEX_HEADER: \setmainfont{Latin Modern Roman}[RawFeature={fallback=symbolfallback}]
+#+LATEX_HEADER: \usepackage{xcolor}
+#+LATEX_HEADER: \usepackage{changepage}
+#+LATEX_HEADER: \usepackage{etoolbox}
+#+LATEX_HEADER: \BeforeBeginEnvironment{tabular}{\begin{adjustwidth}{-1.0in}{-1.0in}\centering}
+#+LATEX_HEADER: \AfterEndEnvironment{tabular}{\end{adjustwidth}}
+#+LATEX_HEADER: \hypersetup{colorlinks=true, linkcolor=blue!60!black, urlcolor=blue!60!black, citecolor=blue!60!black}
+#+STARTUP: nofold inlineimages hideblocks
+#+PROPERTY: header-args:gnuplot :session none
+# :session none is required: without it, org-babel shares a single gnuplot process
+# across all org buffers open in the same Emacs session. State set by other files
+# (axis labels, formats, ranges, y2 settings) bleeds into blocks here, producing
+# corrupt output even when the block starts with "reset". :session none forces a
+# clean shell-command-to-string invocation for each block — identical to running
+# gnuplot from the terminal — with no inherited state.
+
+* Overview
+
+Moderne is a Pebble watchface written in C using the Pebble SDK (SDK 3),
+targeting **gabbro** (Pebble Round 2) exclusively. It renders a clean,
+Art Deco-inspired digital clock face (Poiret One, via a pre-rendered
+anti-aliased glyph atlas) with an outer weather ring, fetched via
+PebbleKit JS from Open-Meteo and revealed on a wrist tap, plus health
+(steps/sleep), moon phase, and next-calendar-appointment features. The
+config page is a Clay/TypeScript bundle under =src/ts/=, localized into
+7 languages.
+
+=watchapp.watchface: true=, =capabilities: ["configurable", "health"]=
+(see =package.json=).
+
+Moderne development started from the *Skyarc* =pebble-dev= watchface by
+Chris Lewis.
+
+* Store Description
+
+The text below is also what's submitted verbatim as this watchface's
+description on the [[https://developer.rebble.io/][Rebble Developer Portal]] app store listing — kept
+here so the two don't drift apart.
+
+Moderne is an elegant, highly configurable watchface for the Pebble Round 2,
+built on a clean Art Deco-inspired numeral face (Poiret One) with day/night-aware
+backgrounds.
+
+- *Sun-arc weather icon*: sweeps a 180-degree arc across the top of the
+  face, tracking real sunrise-to-sunset by day and sunset-to-sunrise by
+  night -- so at a glance, the icon's position doubles as a gauge of how
+  far into the day (or night) you are.
+- *Weather ring* (double-tap): temperature, feels-like, precipitation, wind,
+  humidity, UV, and air quality from Open-Meteo. Ring tints by temperature
+  (real-feel or actual). Icons, text, or both — pick which readings show.
+- *Health*: steps and sleep tracking, charging indicator, adjustable
+  brightness intensity.
+- *Calendar*: next appointment on the watch face, with optional title hiding
+  and adjustable reminder intensity.
+- *Moon phase*: always, at night, or only when actually above the horizon.
+- *Colors*: six background choices each for day and night.
+- *Time/date*: 12/24-hour with optional AM/PM markers, date formats,
+  zero-padding options, configurable tap-to-wake timeout.
+- *Units*: Celsius/Fahrenheit, mph/kph, inches/mm.
+- *Languages*: English, Spanish, French, German, Italian, Portuguese, Dutch.
+
+All data stays between your watch, your phone, and the services you choose to
+enable.
+
+Built exclusively for the round, always-on Pebble Round 2 display.
+
+* Design docs
+
+- =Development_Guidance.org= — standing guidance for how this project
+  wants to be worked on.
+
+* Building & running
+
+The =Makefile= is the intended entry point — it handles the TypeScript
+build step =pebble build= doesn't run automatically:
+
+#+begin_src sh
+make build      # compile src/ts/*.ts, then pebble build (gabbro)
+make install     # build, then install on the emulator (default: gabbro)
+make settings    # (re)start emu_settings_gui.py -- see below (make gui is an alias)
+make clean       # remove all derived build objects (build/, src/ts-build/, .lock-waf_linux_build)
+make ctags / make etags  # index the whole project (excludes build/, node_modules/)
+make help        # list all targets
+#+end_src
+
+Calling =pebble build=/=pebble install= directly also works, but only if
+=src/ts-build/index.js= is already up to date — run =make ts= (or
+=./build_ts.sh= directly) after editing anything under =src/ts/= first.
+
+*Why there's a separate TS build step:* =pebble build= only knows how to
+invoke the SDK's own C/resource pipeline; it has no idea =src/ts/= even
+exists, so the TypeScript -> JS compile (=pkts build=, via
+=package.json='s =build:ts= script) has to be run as a distinct step
+first. (This used to also require a separate native-filesystem staging
+directory, back when this project lived on a Windows-mounted drive whose
+drvfs/9p filesystem couldn't create the TS toolchain's
+=node_modules/.bin/*= symlinks — no longer needed now that the project
+lives on a native filesystem.) =pebble clean= only removes =build/= and
+=.lock-waf_linux_build= — it does NOT touch =src/ts-build/index.js=; use
+=make clean= to remove all three, then re-run =build_ts.sh= (or =make ts=)
+afterward.
+
+#+begin_src sh
+pebble install --phone <ip>       # install to a paired phone instead of the emulator
+#+end_src
+
+* Target platform
+
+=targetPlatforms= in =package.json= is =["gabbro"]= only — this project
+previously also targeted =flint= (Pebble 2 Duo) but dropped it to build
+exclusively for the Pebble Round 2 (260x260, round, 64-color e-paper),
+which is where every color-dependent feature (sun-arc, moon, weather
+ring) is designed and verified.
+
+* Project layout
+
+#+CAPTION: Files under moderne/
+#+NAME: tab:layout
+| Path                                           | Purpose                                                                                                                 |
+|------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------|
+| =src/c/config.h=                                 | Shared constants, layout margins, =#define TEST= (dev-only pinned demo state)                                             |
+| =src/c/main.c=                                   | App init/deinit                                                                                                         |
+| =src/c/windows/main_window.c/.h=                 | Canvas draw loop, tick/tap/bluetooth handlers, sweep test mode                                                          |
+| =src/c/modules/data.c/.h=                        | Persisted settings, weather/temperature-color lookup tables                                                             |
+| =src/c/modules/data_localized.c/.h=              | On-watch day/month string tables for =CONFIG_LANGUAGE= (7 languages) — Pebble's on-watch =strftime()= has no locale support |
+| =src/c/modules/comm.c/.h=                        | AppMessage <-> phone-side JS bridge (weather fetch, config)                                                             |
+| =src/c/modules/sun_arc.c/.h=                     | The sun-arc feature: sunrise/sunset/weather icon sweep                                                                  |
+| =src/c/modules/moon.c/.h=                        | The moon icon: sky position + phase, below the sun-arc                                                                  |
+| =src/c/modules/moon_astro.c/.h=                  | On-watch moon astronomy math (SunCalc-derived), used by the sweep test mode                                             |
+| =src/c/modules/glyph_atlas.c/.h= (+ =*_metrics.h=) | Runtime blitter for the pre-rendered anti-aliased font bitmaps                                                          |
+| =src/c/modules/scalable.c/.h=                    | Font-role selection built on the =pebble-scalable= package's per-platform layout scaling                                  |
+| =src/c/modules/util.c/.h=                        | Shared math/formatting helpers                                                                                          |
+| =src/ts/index.ts=                                | Phone-side TypeScript: Open-Meteo fetch, calendar =.ics= parsing                                                          |
+| =src/ts/clay.ts=                                 | Clay config page (schema + all 7 language string tables)                                                                |
+| =src/ts/moon.ts=                                 | Moon phase/position formulas (SunCalc-derived), phone-side source of truth                                              |
+| =resources/images/weather/=                      | Generated weather icon bitmaps (see =weather_icons_gen.py=)                                                               |
+| =resources/glyph_atlas/=                         | Generated font glyph bitmaps (see =glyph_atlas.py=)                                                                       |
+| =resources/fonts/=                               | Native (non-atlas) font resources                                                                                       |
+| =package.json=                                   | Project metadata (UUID, platforms, resources, message keys)                                                             |
+| =wscript= / =Makefile=                             | Build rules                                                                                                             |
+
+* Dev / generation tools
+
+Run from the project root, not shipped on-device:
+
+| Tool                                                                           | Purpose                                                                        |
+|--------------------------------------------------------------------------------+--------------------------------------------------------------------------------|
+| =weather_icons_gen.py=                                                           | Rasterizes wi-* weather + moon-phase glyphs -> =resources/images/weather/*.png=  |
+| =glyph_atlas.py=                                                                 | Rasterizes the Poiret One glyph atlas -> =resources/glyph_atlas/=                |
+| =wind_direction_icon_gen.py=                                                     | Generates the wind-direction arrow icon                                        |
+| =steps_sleep_icon_gen.py=                                                        | Generates steps/sleep/charging icons (MDI-sourced)                             |
+| =humidity_and_app_icon_gen.py=                                                   | Generates the humidity icon and the app-picker (menu) icon (MDI-sourced)       |
+| =font_sim*.py=, =font_report/=                                                     | Simulates Pebble's 1-bit font rasterizer to pick point sizes/fonts             |
+| =emu_settings_gui.py=                                                            | Web GUI (=make settings=, http://localhost:8765/) for every =pebble emu-*= command |
+| =emu_hotkeys.py=                                                                 | Keyboard shortcuts for the Pebble QEMU emulator window itself                  |
+| =sweep_gif.py=                                                                   | Drives the app's own internal sweep-test state machine to generate demo GIFs   |
+| =next_appt_screenshot.py=, =health_line_screenshot.py=, =weather_ring_screenshot.py= | Single real-time screenshot captures, driven the same way as =sweep_gif.py=      |
+| =screenshots/Makefile=                                                           | Regenerates every store/demo screenshot and GIF in =screenshots/=                |
+
+=config.h='s =#define TEST= (normally commented out) pins the clock to a
+fixed demo time/sunrise/sunset/weather for exercising the sun-arc without
+waiting for real dawn/dusk. =main_window.c='s accelerometer-tap gestures
+(single tap: reveal the weather ring; double tap: sticky weather ring +
+manual refresh; triple/quadruple/quintuple tap: normal/fast/ultra sweep
+test mode) can all be driven from =emu_settings_gui.py= as well as a real
+device.
+
+* Licensing & third-party code
+
+This project's own original code and content is licensed under the
+*Apache License, Version 2.0* — see =LICENSE=. This does not relicense
+the third-party fonts, icon sources, ported code, and libraries this
+project depends on, each of which remains under its own license — see
+=THIRD_PARTY_NOTICES.md= for the full accounting (Open-Meteo, Weather
+Icons, Material Design Icons, Poiret One, SunCalc, ical.js, Clay,
+=pebble-packet=, =pebble-scalable=, and others).
+
+* Documentation
+
+Full SDK docs, tutorials, and API reference: [[https://developer.rebble.io/][https://developer.rebble.io/]]
+App store submission guide: [[https://developer.rebble.io/guides/appstore-publishing/][https://developer.rebble.io/guides/appstore-publishing/]]
+
+* Do Not Export :NOEXPORT:
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+This section won't be exported
+* COMMENT Emacs Local Variables :NOEXPORT:
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+What each file-local variable below does, and why it is there.
+
+** ~truncate-lines: t~
+
+Don't soft-wrap long lines at the window edge — let them run off to the
+right.  With wrapping on, the inline images embedded between paragraphs
+re-flow on every window resize and make the source unpleasant to edit;
+truncation keeps the structural layout stable.
+
+** ~org-confirm-babel-evaluate: nil~
+
+Run ~C-c C-c~ on a source block without the "Evaluate this code block?"
+prompt.  This file is full of trusted babel blocks (gnuplot, plantuml,
+ditaa, mermaid, dot, shell-out-to-tikz, etc.) that are re-run frequently
+during authoring; the confirmation prompt becomes pure friction.
+
+** ~(auto-revert-mode 1)~
+
+Re-read the buffer from disk whenever the underlying file changes.  Useful
+when an external tool (or a CI / formatting hook) rewrites the file behind
+Emacs's back so the changes show up immediately.
+
+** ~(add-hook 'org-babel-after-execute-hook 'org-redisplay-inline-images nil t)~
+
+After a babel block finishes, refresh the inline image overlays in this
+buffer.  Several blocks here generate images on disk (wavedrom SVG → PDF,
+gnuplot PNG, plantuml PNG, ditaa PNG, mermaid PNG, dot PNG, TikZ →
+ImageMagick PNG).  Without this hook the image file is rewritten but the
+overlay still shows the stale version until you run
+~org-redisplay-inline-images~ by hand.  The trailing ~nil t~ makes the
+hook buffer-local.
+
+** ~(font-lock-add-keywords nil '(("️" (0 '(face nil display "")))) t)~
+
+Many Unicode symbols exist in two presentations: a text version (single-width,
+monospace-compatible) and an emoji version triggered by appending U+FE0F
+(variation selector-16).  Emacs counts both forms as width 1, but the emoji
+glyph renders visually wider, throwing off org-mode table alignment.
+
+Rather than mapping individual characters, this font-lock rule makes U+FE0F
+itself invisible (~display ""~) everywhere it appears.  The base character
+remains and renders in its text presentation, fixing alignment for the entire
+class: ⚠️ ℹ️ ✔️ ✖️ ☑️ ✉️ ✏️ ✂️ ☎️ ❄️ ♻️ ⚙️ ➡️ ↩️ and any others.  The
+underlying file is unchanged.
+
+** The ~post-command-hook~ block (~org-table~ at 85%)
+
+Keep ~org-table~ cells at 85% of the body-text size, and have that ratio
+track ~text-scale-increase~ / ~text-scale-decrease~.
+
+Why simpler approaches don't work in this setup:
+
+- A relative remap such as ~(face-remap-add-relative 'org-table :height 0.85)~
+  doesn't track text-scale, because with ~variable-pitch-mode~ active the
+  ~default~ face is remapped to a variable-pitch font (Inter), but
+  ~org-table~ inherits from ~fixed-pitch~ (JetBrains Mono).  Scale changes
+  applied to ~default~ never propagate down the ~fixed-pitch~ chain.
+- An absolute remap (e.g. ~:height 92~) pins the table at a fixed point
+  size, so it stays put when the body text scales.
+- Advising ~text-scale-set~ doesn't fire: ~text-scale-increase~ is a C
+  subroutine that calls ~text-scale-set~ at the C level, bypassing any
+  Elisp advice attached to the symbol.
+
+What the hook does:
+
+1. On each ~post-command-hook~ tick it reads the current text-scale factor
+   straight out of ~face-remapping-alist~ (the ~:height~ value Emacs stores
+   on the ~default~ entry).
+2. If that factor changed since the last command, it recomputes
+   ~target = round(0.85 × default-base-height × scale)~ in tenths of a
+   point and re-applies the remap to ~org-table~.
+3. A one-element state cell (~(list 1.0)~) caches the previous factor so
+   the alist is only rewritten when the scale actually changes — keystrokes
+   that don't touch text-scale are essentially free.
+
+Buffer-local hooks are released automatically when the buffer is killed,
+so no explicit ~kill-buffer-hook~ cleanup is required.
+
+** ~(org-table-map-tables #'org-table-align)~
+
+Walk every table in the buffer at open time and call ~org-table-align~ on
+it.  Tables saved with non-default column widths or stale alignment can
+look ragged until they're re-aligned; doing it once on visit gives a
+clean view.
+
+** ~(add-to-list 'revert-without-query ".*\\.png")~
+
+When a PNG buffer is reverted (because a babel block regenerated the
+file), don't prompt — just reload it.  PNGs in this file are derived
+artifacts, never hand-edited, so there's never anything to lose.
+
+** ~(setq-local org-export-exclude-tags '("NOEXPORT"))~
+
+Tell the exporter to skip any heading tagged ~:NOEXPORT:~ (including this
+section itself).  Without this, the prose explaining the local variables
+would leak into the exported HTML / PDF.
+
+# Local Variables:
+# truncate-lines: t
+# org-confirm-babel-evaluate: nil
+# eval: (auto-revert-mode 1)
+# eval: (add-hook 'org-babel-after-execute-hook 'org-redisplay-inline-images nil t)
+# eval: (font-lock-add-keywords nil '(("️" (0 '(face nil display "")))) t)
+# eval: (let* ((state (list 1.0)) (fn (lambda () (let* ((spec (cadr (assq 'default face-remapping-alist))) (cur (or (and (listp spec) (plist-get spec :height)) 1.0))) (unless (equal cur (car state)) (setcar state cur) (setq face-remapping-alist (assq-delete-all 'org-table face-remapping-alist)) (face-remap-add-relative 'org-table :height (round (* 0.85 (face-attribute 'default :height) (if (floatp cur) cur 1.0))))))))) (funcall fn) (add-hook 'post-command-hook fn nil t))
+# eval: (org-table-map-tables #'org-table-align)
+# eval: (add-to-list 'revert-without-query ".*\\.png")
+# End:

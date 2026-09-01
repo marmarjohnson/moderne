@@ -1,0 +1,772 @@
+{
+  "name": "moderne",
+  "version": "1.0.0",
+  "author": "Mark W. Johnson",
+  "license": "Apache-2.0",
+  "private": true,
+  "_note": "build_ts.sh runs `npm run build:ts` to compile src/ts/ into src/ts-build/index.js -- run it after editing anything under src/ts/.",
+  "dependencies": {
+    "@rebble/clay": "^1.0.8",
+    "ical.js": "^2.2.1",
+    "pebble-packet": "^1.6.0",
+    "pebble-scalable": "^2.4.0"
+  },
+  "devDependencies": {
+    "pkts": "^0.3.0-beta.1"
+  },
+  "scripts": {
+    "build:ts": "pkts build"
+  },
+  "keywords": [
+    "pebble-app"
+  ],
+  "pebble": {
+    "sdkVersion": "3",
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "MENU_ICON",
+          "file": "images/app_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_WIND_DIRECTION",
+          "file": "images/wind_direction_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_HUMIDITY",
+          "file": "images/humidity_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_STEPS",
+          "file": "images/steps_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_SLEEP",
+          "file": "images/sleep_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_STEPS_24",
+          "file": "images/steps_icon_24.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_SLEEP_24",
+          "file": "images/sleep_icon_24.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_CHARGING",
+          "file": "images/charging_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_WIND_DIRECTION_BLACK",
+          "file": "images/wind_direction_icon_black.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_HUMIDITY_BLACK",
+          "file": "images/humidity_icon_black.png"
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_31",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9a-zA-Z./% -]"
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_27",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9a-zA-Z./% -]",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_38",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9:]"
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_54_G",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9:]",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_20_G",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9a-zA-Z./% -]",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "POIRET_ONE_14_G",
+          "file": "fonts/PoiretOne-Regular.ttf",
+          "characterRegex": "[0-9% °-]",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_TIME_WHITE",
+          "file": "glyph_atlas/poiret_time_54_white.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_TIME_BLACK",
+          "file": "glyph_atlas/poiret_time_54_black.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_DATE_WHITE",
+          "file": "glyph_atlas/poiret_date_27_white.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_DATE_BLACK",
+          "file": "glyph_atlas/poiret_date_27_black.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_RING_WHITE",
+          "file": "glyph_atlas/poiret_ring_14_white.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_RING_BLACK",
+          "file": "glyph_atlas/poiret_ring_14_black.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_WEATHER_WHITE",
+          "file": "glyph_atlas/poiret_weather_20_white.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_WEATHER_BLACK",
+          "file": "glyph_atlas/poiret_weather_20_black.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_HEALTH_WHITE",
+          "file": "glyph_atlas/poiret_health_14_white.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "GLYPH_ATLAS_HEALTH_BLACK",
+          "file": "glyph_atlas/poiret_health_14_black.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_SUNNY",
+          "file": "images/weather/wi_day_sunny.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_SUNNY_OVERCAST",
+          "file": "images/weather/wi_day_sunny_overcast.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_CLOUDY",
+          "file": "images/weather/wi_day_cloudy.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_FOG",
+          "file": "images/weather/wi_day_fog.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_SPRINKLE",
+          "file": "images/weather/wi_day_sprinkle.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_RAIN",
+          "file": "images/weather/wi_day_rain.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_RAIN_MIX",
+          "file": "images/weather/wi_day_rain_mix.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_SNOW",
+          "file": "images/weather/wi_day_snow.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_SHOWERS",
+          "file": "images/weather/wi_day_showers.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_THUNDERSTORM",
+          "file": "images/weather/wi_day_thunderstorm.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_DAY_LIGHTNING",
+          "file": "images/weather/wi_day_lightning.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_CLOUD",
+          "file": "images/weather/wi_cloud.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_CLOUDY",
+          "file": "images/weather/wi_cloudy.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_FOG",
+          "file": "images/weather/wi_fog.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SPRINKLE",
+          "file": "images/weather/wi_sprinkle.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_RAIN",
+          "file": "images/weather/wi_rain.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_RAIN_MIX",
+          "file": "images/weather/wi_rain_mix.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SNOW",
+          "file": "images/weather/wi_snow.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SHOWERS",
+          "file": "images/weather/wi_showers.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_THUNDERSTORM",
+          "file": "images/weather/wi_thunderstorm.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_LIGHTNING",
+          "file": "images/weather/wi_lightning.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_HORIZON",
+          "file": "images/weather/wi_horizon.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SUNRISE",
+          "file": "images/weather/wi_sunrise.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SUNSET",
+          "file": "images/weather/wi_sunset.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_STARS",
+          "file": "images/weather/wi_stars.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_THERMOMETER",
+          "file": "images/weather/wi_thermometer.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_THERMOMETER_INTERNAL",
+          "file": "images/weather/wi_thermometer_internal.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_UMBRELLA",
+          "file": "images/weather/wi_umbrella.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_STRONG_WIND",
+          "file": "images/weather/wi_strong_wind.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_HOT",
+          "file": "images/weather/wi_hot.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_SMOG",
+          "file": "images/weather/wi_smog.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_0",
+          "file": "images/weather/wi_moon_0.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_1",
+          "file": "images/weather/wi_moon_1.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_2",
+          "file": "images/weather/wi_moon_2.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_3",
+          "file": "images/weather/wi_moon_3.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_4",
+          "file": "images/weather/wi_moon_4.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_5",
+          "file": "images/weather/wi_moon_5.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_6",
+          "file": "images/weather/wi_moon_6.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_7",
+          "file": "images/weather/wi_moon_7.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_8",
+          "file": "images/weather/wi_moon_8.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_9",
+          "file": "images/weather/wi_moon_9.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_10",
+          "file": "images/weather/wi_moon_10.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_11",
+          "file": "images/weather/wi_moon_11.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_12",
+          "file": "images/weather/wi_moon_12.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_13",
+          "file": "images/weather/wi_moon_13.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_14",
+          "file": "images/weather/wi_moon_14.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_15",
+          "file": "images/weather/wi_moon_15.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_16",
+          "file": "images/weather/wi_moon_16.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_17",
+          "file": "images/weather/wi_moon_17.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_18",
+          "file": "images/weather/wi_moon_18.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_19",
+          "file": "images/weather/wi_moon_19.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_20",
+          "file": "images/weather/wi_moon_20.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_21",
+          "file": "images/weather/wi_moon_21.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_22",
+          "file": "images/weather/wi_moon_22.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_23",
+          "file": "images/weather/wi_moon_23.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_24",
+          "file": "images/weather/wi_moon_24.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_25",
+          "file": "images/weather/wi_moon_25.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_26",
+          "file": "images/weather/wi_moon_26.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "WI_MOON_27",
+          "file": "images/weather/wi_moon_27.png",
+          "targetPlatforms": [
+            "gabbro"
+          ]
+        }
+      ]
+    },
+    "projectType": "native",
+    "uuid": "4cc0831c-8826-4c0a-a3d2-057c0ccf40e4",
+    "messageKeys": [
+      "CURRENT_TEMP",
+      "CURRENT_CODE",
+      "SUNRISE",
+      "SUNSET",
+      "CURRENT_HUMIDITY",
+      "CURRENT_WIND",
+      "TEMP_ARR",
+      "PRECIP_ARR",
+      "CODE_ARR",
+      "HOURLY_ICON_ARR",
+      "REQUEST_WEATHER",
+      "WEATHER_ERROR",
+      "CONFIG_TEMP_UNIT",
+      "CONFIG_WIND_UNIT",
+      "CONFIG_ALLOW_SWEEP",
+      "CONFIG_COLOR_BG",
+      "CONFIG_TAP_TIMEOUT",
+      "CONFIG_FONT",
+      "CONFIG_DATE_FORMAT",
+      "CONFIG_PAD_DAY",
+      "CONFIG_PAD_HOUR",
+      "CONFIG_MOON_DISPLAY",
+      "CONFIG_AA_TIME",
+      "CONFIG_AA_DATE",
+      "MOON_PHASE",
+      "MOON_AZIMUTH",
+      "MOON_ALTITUDE",
+      "MOON_BLUE",
+      "LATITUDE",
+      "LONGITUDE",
+      "CURRENT_WIND_DIRECTION",
+      "CURRENT_APPARENT_TEMP",
+      "APPARENT_TEMP_ARR",
+      "CONFIG_TEMP_COLOR_SOURCE",
+      "CONFIG_TEMP_COLOR_SCALE",
+      "CONFIG_AA_WIND",
+      "CONFIG_AA_TEMP",
+      "CONFIG_RING_LAYOUT",
+      "CONFIG_RING_TEXT_TINT",
+      "CONFIG_SHOW_NEXT_APPT",
+      "CONFIG_CALENDAR_ICS_URL",
+      "NEXT_APPT_TITLE_1",
+      "NEXT_APPT_TIME_1",
+      "NEXT_APPT_TITLE_2",
+      "NEXT_APPT_TIME_2",
+      "CONFIG_REMINDER_INTENSITY",
+      "CONFIG_HIDE_APPT_TITLE",
+      "CURRENT_PRECIP_NOW",
+      "CURRENT_WIND_GUST",
+      "CURRENT_UV_INDEX",
+      "CURRENT_AQI",
+      "CONFIG_INFO_TEMP",
+      "CONFIG_INFO_FEELS_LIKE",
+      "CONFIG_INFO_PRECIP",
+      "CONFIG_INFO_WIND",
+      "CONFIG_INFO_HUMIDITY",
+      "CONFIG_INFO_GUST",
+      "CONFIG_INFO_UV",
+      "CONFIG_INFO_AQI",
+      "CONFIG_INFO_STEPS",
+      "CONFIG_INFO_SLEEP",
+      "CONFIG_PRECIP_UNIT",
+      "CONFIG_COLOR_BG_NIGHT",
+      "CONFIG_SHOW_AM",
+      "CONFIG_SHOW_PM",
+      "CONFIG_LANGUAGE",
+      "CONFIG_SHOW_STEPS",
+      "CONFIG_SHOW_SLEEP",
+      "CONFIG_HEALTH_INTENSITY",
+      "CONFIG_BATTERY_SCALE",
+      "DEBUG_SWEEP_STEP",
+      "DEBUG_SWEEP_SET_MINUTES",
+      "DEBUG_MOON_PIN"
+    ],
+    "enableMultiJS": true,
+    "displayName": "Moderne",
+    "watchapp": {
+      "onlyShownOnCommunication": false,
+      "hiddenApp": false,
+      "watchface": true
+    },
+    "targetPlatforms": [
+      "gabbro"
+    ],
+    "capabilities": [
+      "configurable",
+      "health"
+    ]
+  }
+}

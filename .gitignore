@@ -1,0 +1,10 @@
+/build/
+.lock-waf_linux_build
+/node_modules/
+tags
+TAGS
+\#*#
+*~
+/src/ts-build/
+__pycache__/
+*.pyc
