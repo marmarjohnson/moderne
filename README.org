@@ -179,10 +179,11 @@ device.
 This project's own original code and content is licensed under the
 *Apache License, Version 2.0* — see =LICENSE=. This does not relicense
 the third-party fonts, icon sources, ported code, and libraries this
-project depends on, each of which remains under its own license — see
-=THIRD_PARTY_NOTICES.md= for the full accounting (Open-Meteo, Weather
+project depends on (including *Skyarc*, the watchface this project was
+originally forked from), each of which remains under its own license —
+see =THIRD_PARTY_NOTICES.md= for the full accounting (Open-Meteo, Weather
 Icons, Material Design Icons, Poiret One, SunCalc, ical.js, Clay,
-=pebble-packet=, =pebble-scalable=, and others).
+=pebble-packet=, =pebble-scalable=, Skyarc, and others).
 
 * Documentation
 

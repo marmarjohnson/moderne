@@ -11,6 +11,46 @@
 // each their own independent 24/28 constant, not unified across files).
 #define MOON_ICON_SIZE 24
 
+// Predicted TOTAL lunar eclipse totality windows (U2-U3, UTC), hardcoded --
+// see Development_Guidance.org's Lunar/astronomy specifics for why a short,
+// periodically-refreshed table beats deriving eclipses from orbital
+// mechanics on-watch: they're precisely predicted years in advance, so
+// there's nothing to compute. Source: NASA GSFC's eclipse canon
+// (eclipse.gsfc.nasa.gov/lunar.html, eclipse.gsfc.nasa.gov/LEdecade/
+// LEdecade2031.html) and theskylive.com's contact-time pages for the two
+// rows marked (exact); the other four only had "greatest eclipse" time +
+// total-phase duration published there, so their start/end are greatest
+// +/- duration/2 (validated to within ~1 minute against the exact rows --
+// comfortably inside a single flat-tint icon's margin of visible error).
+// Covers 2026-2033; extend whenever a later lunar-feature pass revisits
+// this and the table starts running out.
+typedef struct {
+  time_t start; // U2, UTC
+  time_t end;   // U3, UTC
+} EclipseWindow;
+
+static const EclipseWindow ECLIPSE_WINDOWS[] = {
+  { 1772535866, 1772539365 }, // 2026-03-03 11:04:26-12:02:45 UTC (exact)
+  { 1861892179, 1861896460 }, // 2028-12-31 16:16:19-17:27:40 UTC (exact)
+  { 1877135478, 1877141581 }, // 2029-06-26 02:31:18-04:13:01 UTC (exact)
+  { 1892499381, 1892502603 }, // 2029-12-20 22:16:21-23:10:03 UTC (exact)
+  { 1966516911, 1966520871 }, // 2032-04-25 ~14:41-15:47 UTC (approx)
+  { 1981737610, 1981740430 }, // 2032-10-18 ~18:40-19:27 UTC (approx)
+  { 1997117361, 1997120301 }, // 2033-04-14 ~18:49-19:38 UTC (approx)
+  { 2012379413, 2012384153 }, // 2033-10-08 ~10:16-11:35 UTC (approx)
+};
+#define ECLIPSE_WINDOW_COUNT (int)(sizeof(ECLIPSE_WINDOWS) / sizeof(ECLIPSE_WINDOWS[0]))
+
+// Whether `utc` (a real Unix epoch instant, from mktime() -- never local
+// time, eclipse windows above are UTC) falls inside any known totality
+// window. Table is tiny and unsorted-safe to scan linearly every draw.
+static bool moon_is_eclipse(time_t utc) {
+  for (int i = 0; i < ECLIPSE_WINDOW_COUNT; i++) {
+    if (utc >= ECLIPSE_WINDOWS[i].start && utc <= ECLIPSE_WINDOWS[i].end) return true;
+  }
+  return false;
+}
+
 // Region below the sun-arc and above the digital time. First-cut geometry, picked
 // by measuring an actual baseline render rather than guessed cold: with
 // TEST-pinned time/sunrise/sunset, the gap between the arc's apex (y=17 at
@@ -97,9 +137,22 @@ void moon_draw(GContext *ctx, GRect bounds, struct tm *t) {
   const int phase = ((app_state->moon_phase % 28) + 28) % 28; // defensive: keep in range
   const uint32_t resource_id = MOON_ICON_RESOURCES[phase];
 
-  // Color: soft yellow normally, blue on the (rare) day a blue moon lands. Eclipse
-  // (red) deferred -- not implemented yet.
-  const GColor tint = app_state->moon_blue ? GColorBlueMoon : GColorPastelYellow;
+  // Color: soft yellow normally, blue on the (rare) day a blue moon lands, deep
+  // red during a real total lunar eclipse's totality window (see
+  // ECLIPSE_WINDOWS above) -- checked first since it's the rarer and more
+  // visually distinctive of the two, and both are full-moon-only
+  // phenomena that could in principle coincide. mktime() converts the
+  // real (sweep/TEST-respecting) local `t` this frame is drawing to a UTC
+  // instant -- same technique the FAST/ULTRA sweep block above already
+  // uses for moon_astro.c, so a TEST-pinned or swept date that happens to
+  // land inside a table window exercises this too, not just real time
+  // passing. tm_isdst = -1 (see that block's own comment) rather than
+  // trusting whatever DST flag `t` already carried in from localtime().
+  struct tm eclipse_check_t = *t;
+  eclipse_check_t.tm_isdst = -1;
+  const bool eclipse_now = moon_is_eclipse(mktime(&eclipse_check_t));
+  const GColor tint = eclipse_now ? GColorDarkCandyAppleRed
+    : app_state->moon_blue ? GColorBlueMoon : GColorPastelYellow;
 
   // Full strength only when actually visible right now (see visible_now
   // above); faded otherwise -- ALWAYS/NIGHT reach this with visible_now

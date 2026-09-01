@@ -7,6 +7,20 @@ reference-only and never shipped) actually depends on, and what each one
 requires. A short summary lives in the config page itself (Credits section);
 this file is the full accounting.
 
+## Original fork base
+
+**Skyarc** (github.com/C-D-Lewis/pebble-dev, `watchfaces/skyarc`) — Apache
+2.0, as of 2026-08-31. By Chris Lewis. This project started as a
+personal-use fork of Skyarc's C source — the clock rendering,
+weather-ring, and config-page groundwork this watchface built on, before
+Moderne's own substantial rewrites (bitmap glyph-atlas rendering, the
+sun-arc feature, moon phase, health, calendar, and more) diverged it
+considerably. Skyarc shipped with no `license` field and no `LICENSE` file
+at the time of the fork; raised with the author, who added the Apache
+License, Version 2.0 the same day. Matches this project's own license (see
+`LICENSE`) — see `pebble-scalable` below for the same author's identical
+resolution two days earlier.
+
 ## Fonts
 
 **Poiret One** — SIL Open Font License 1.1. Copyright 2011 The Poiret One

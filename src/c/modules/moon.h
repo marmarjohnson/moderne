@@ -7,7 +7,8 @@
 
 // Draws the current moon icon (or nothing, if the moon is below the
 // horizon right now, or no moon data has ever been received) into
-// `bounds`, for the given local time `t` (used only for the daytime-faint
-// color check -- the moon's own phase/position are precomputed phone-side
-// and read directly from AppState, not derived from `t`).
+// `bounds`, for the given local time `t` (used for the daytime-faint
+// color check and the eclipse-window UTC conversion -- the moon's own
+// phase/position are precomputed phone-side and read directly from
+// AppState, not derived from `t`).
 void moon_draw(GContext *ctx, GRect bounds, struct tm *t);
